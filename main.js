@@ -1,26 +1,87 @@
 import './style.css'
+import { io } from 'socket.io-client'
 
 const board = document.getElementById('board');
 const addBtn = document.getElementById('add-btn');
 const overlay = document.getElementById('overlay');
 const colorMenu = document.getElementById('color-menu');
 
-let notes = JSON.parse(localStorage.getItem('pizarra-notes')) || [
-  { id: 1, text: '¡Bienvenido! Haz doble clic para maximizar una nota.', color: 'color-yellow', x: 50, y: 50, rotate: -8, priority: 'priority-red' },
-  { id: 2, text: 'Haz clic en el botón + para elegir color y prioridad.', color: 'color-pink', x: 250, y: 80, rotate: 6, priority: '' },
-];
+// --- Conexión colaborativa (abierta, sin usuarios) ---
+// Todas las notas viven en el servidor y se comparten entre todos en tiempo real.
+const socket = io();
 
+let notes = [];
 let activeNote = null;
 let activeNoteEl = null;
 
-function saveNotes() {
-  localStorage.setItem('pizarra-notes', JSON.stringify(notes));
+// ===== Helpers de sincronización =====
+function emitAdd(note) { socket.emit('note:add', note); }
+function emitUpdate(patch) { socket.emit('note:update', patch); }
+function emitDelete(id) { socket.emit('note:delete', id); }
+
+function getEl(id) {
+  return board.querySelector(`.post-it[data-id="${id}"]`);
 }
 
+function applyClassName(el, note) {
+  const maximized = el.classList.contains('maximized') ? ' maximized' : '';
+  el.className = `post-it ${note.color} ${note.priority || ''}${maximized}`;
+}
+
+// ===== Eventos entrantes del servidor (cambios de OTRAS personas) =====
+socket.on('notes:init', (serverNotes) => {
+  notes = Array.isArray(serverNotes) ? serverNotes : [];
+  renderNotes();
+});
+
+socket.on('note:added', (note) => {
+  if (notes.some(n => n.id === note.id)) return;
+  notes.push(note);
+  if (!getEl(note.id)) {
+    board.appendChild(createNoteElement(note));
+  }
+});
+
+socket.on('note:updated', (patch) => {
+  const note = notes.find(n => n.id === patch.id);
+  if (!note) return;
+  Object.assign(note, patch);
+
+  const el = getEl(patch.id);
+  if (!el) return;
+
+  // Posición
+  if (patch.x != null) el.style.left = `${patch.x}px`;
+  if (patch.y != null) el.style.top = `${patch.y}px`;
+
+  // Color / prioridad
+  if (patch.color != null || patch.priority != null) applyClassName(el, note);
+
+  // Texto: no pisar lo que este usuario esté escribiendo ahora mismo
+  if (patch.text != null) {
+    const textarea = el.querySelector('textarea');
+    if (textarea && document.activeElement !== textarea) {
+      textarea.value = patch.text;
+    }
+  }
+});
+
+socket.on('note:deleted', (id) => {
+  notes = notes.filter(n => n.id !== id);
+  const el = getEl(id);
+  if (el) {
+    el.style.transform = 'scale(0)';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+    if (el === activeNoteEl) closeMaximized();
+  }
+});
+
+// ===== Acciones locales =====
 function deleteNote(id, el) {
   if (window.confirm('¿Deseas eliminar esta nota?')) {
     notes = notes.filter(n => n.id !== id);
-    saveNotes();
+    emitDelete(id);
     el.style.transform = 'scale(0)';
     el.style.opacity = '0';
     setTimeout(() => el.remove(), 300);
@@ -63,7 +124,7 @@ function createNoteElement(note) {
       e.stopPropagation();
       note.priority = p;
       el.className = `post-it ${note.color} ${note.priority || ''} maximized`;
-      saveNotes();
+      emitUpdate({ id: note.id, priority: p });
     });
     controls.appendChild(opt);
   });
@@ -139,7 +200,7 @@ function createNoteElement(note) {
       el.style.transition = '';
       el.style.zIndex = '';
       if (hasMoved) {
-        saveNotes();
+        emitUpdate({ id: note.id, x: note.x, y: note.y });
       }
       hasMoved = false;
     }
@@ -205,7 +266,7 @@ function addNote() {
 
   const newNote = { id, text: '', color: selectedColor, priority: selectedPriority, x, y, rotate };
   notes.push(newNote);
-  saveNotes();
+  emitAdd(newNote);
 
   const el = createNoteElement(newNote);
   board.appendChild(el);
@@ -223,7 +284,7 @@ function maximizeNote(el, note) {
 
   textarea.oninput = (e) => {
     note.text = e.target.value;
-    saveNotes();
+    emitUpdate({ id: note.id, text: note.text });
   };
 }
 
@@ -256,4 +317,4 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-renderNotes();
+// El primer render llega vía 'notes:init' del servidor.

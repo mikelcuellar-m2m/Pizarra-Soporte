@@ -12,14 +12,24 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# --- Etapa 2: servir los estáticos con nginx ---
-FROM nginx:alpine AS runtime
+# --- Etapa 2: servidor Node (estáticos + WebSocket colaborativo) ---
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV DATA_DIR=/app/data
 
-# Config de nginx (sirve estáticos en el puerto 80)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Solo dependencias de producción (express, socket.io)
+COPY package*.json ./
+RUN npm ci --omit=dev
 
-# Copiar el build generado en la etapa anterior
-COPY --from=build /app/dist /usr/share/nginx/html
+# Servidor y build generado en la etapa anterior
+COPY server.js ./
+COPY --from=build /app/dist ./dist
 
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Carpeta persistente para las notas (montar un volumen aquí en Dokploy)
+RUN mkdir -p /app/data
+VOLUME ["/app/data"]
+
+EXPOSE 3000
+CMD ["node", "server.js"]
