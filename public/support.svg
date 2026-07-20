@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#2563eb"/>
+  <!-- Diadema (arco superior) -->
+  <path d="M16 34v-4a16 16 0 0 1 32 0v4"
+        fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <!-- Auricular izquierdo -->
+  <rect x="12" y="32" width="9" height="16" rx="4" fill="#ffffff"/>
+  <!-- Auricular derecho -->
+  <rect x="43" y="32" width="9" height="16" rx="4" fill="#ffffff"/>
+  <!-- Brazo del micrófono -->
+  <path d="M47 48v3a6 6 0 0 1-6 6h-6"
+        fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <!-- Boca del micrófono -->
+  <circle cx="32" cy="57" r="3.5" fill="#ffffff"/>
+</svg>
