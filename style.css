@@ -1,0 +1,377 @@
+@import url('https://fonts.googleapis.com/css2?family=Indie+Flower&family=Outfit:wght@400;700&display=swap');
+
+:root {
+  --board-bg: #1a3c34;
+  --board-border: #4e342e;
+  --postit-yellow: #fff740;
+  --postit-blue: #7afcff;
+  --postit-pink: #ff7eb9;
+  --postit-green: #97ffad;
+  --postit-purple: #d7b4f3;
+  --tape-color: rgba(255, 255, 255, 0.4);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background-color: #222;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  perspective: 1000px;
+}
+
+.board-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: var(--board-bg);
+  border: 20px solid transparent;
+  border-image: linear-gradient(to right, #5d4037, #8d6e63, #5d4037) 20;
+  box-shadow: 
+    inset 0 0 100px rgba(0,0,0,0.6),
+    0 30px 60px rgba(0,0,0,0.9);
+  border-radius: 4px;
+  overflow: hidden;
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08) 0%, transparent 80%),
+    url('https://www.transparenttextures.com/patterns/dark-leather.png');
+}
+
+/* Wood frame detailing */
+.board-container::after {
+  content: '';
+  position: absolute;
+  top: -20px;
+  left: -20px;
+  right: -20px;
+  bottom: -20px;
+  border: 2px solid rgba(255,255,255,0.1);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.post-it {
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  padding: 20px;
+  padding-top: 30px;
+  background: var(--postit-yellow);
+  box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
+  cursor: pointer;
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease, z-index 0s;
+  font-family: 'Indie Flower', cursive;
+  font-size: 1.1rem;
+  line-height: 1.2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: visible; /* CHANGED: allow delete button to be visible outside bounds */
+  user-select: none;
+}
+
+.post-it:hover {
+  transform: scale(1.05) rotate(0deg) !important;
+  box-shadow: 10px 10px 25px rgba(0,0,0,0.4);
+  z-index: 100;
+}
+
+.post-it::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 25px;
+  background: var(--tape-color);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  z-index: 2;
+}
+
+.post-it .content {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  resize: none;
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  cursor: pointer;
+  pointer-events: none; /* Make click go to parent */
+}
+
+/* Maximized state */
+.post-it.maximized {
+  position: fixed;
+  top: 50% !important;
+  left: 50% !important;
+  width: 90vw;
+  height: 90vh;
+  transform: translate(-50%, -50%) rotate(0deg) !important;
+  z-index: 2000;
+  cursor: default;
+  padding: 60px;
+  font-size: 2.5rem;
+  border-radius: 8px;
+  box-shadow: 0 30px 100px rgba(0,0,0,0.8);
+  overflow: hidden;
+}
+
+.post-it.maximized .content {
+  pointer-events: auto;
+  cursor: text;
+}
+
+.post-it.maximized::before {
+  width: 150px;
+  height: 40px;
+  top: -15px;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(5px);
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Floating Add Button */
+.add-btn {
+  position: fixed;
+  bottom: 40px;
+  right: 40px;
+  width: 60px;
+  height: 60px;
+  background: #ff4081;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 2rem;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(255, 64, 129, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 100;
+}
+
+.add-btn:hover {
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 0 6px 20px rgba(255, 64, 129, 0.6);
+}
+
+.add-btn:active {
+  transform: scale(0.9);
+}
+
+/* DELETE BUTTON - single clean rule */
+.delete-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  background: #ff5252;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  line-height: 1;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  z-index: 200;
+  transition: all 0.2s ease;
+  opacity: 0;
+  pointer-events: auto;
+}
+
+.post-it:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  background: #d32f2f;
+  transform: scale(1.15);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+}
+
+.post-it.maximized .delete-btn {
+  display: none;
+}
+
+/* Sparkling / Flashing Borders */
+@keyframes sparkle-red {
+  0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.8); border-color: #ff5252; }
+  50% { box-shadow: 0 0 20px 5px rgba(255, 0, 0, 0.4); border-color: #ff1744; }
+  100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); border-color: #ff5252; }
+}
+@keyframes sparkle-yellow {
+  0% { box-shadow: 0 0 0 0 rgba(255, 235, 59, 0.8); border-color: #ffd740; }
+  50% { box-shadow: 0 0 20px 5px rgba(255, 235, 59, 0.4); border-color: #ffea00; }
+  100% { box-shadow: 0 0 0 0 rgba(255, 235, 59, 0); border-color: #ffd740; }
+}
+@keyframes sparkle-green {
+  0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.8); border-color: #69f0ae; }
+  50% { box-shadow: 0 0 20px 5px rgba(76, 175, 80, 0.4); border-color: #00e676; }
+  100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); border-color: #69f0ae; }
+}
+
+.priority-red { border: 4px solid #ff5252; animation: sparkle-red 0.8s infinite alternate; }
+.priority-yellow { border: 4px solid #ffd740; animation: sparkle-yellow 0.8s infinite alternate; }
+.priority-green { border: 4px solid #69f0ae; animation: sparkle-green 0.8s infinite alternate; }
+
+/* In-note Priority Selector */
+.note-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 15px;
+  background: rgba(255,255,255,0.9);
+  padding: 10px 20px;
+  border-radius: 30px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+  z-index: 10;
+}
+
+.post-it.maximized .note-controls {
+  display: flex;
+}
+
+.note-controls .priority-option {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid rgba(0,0,0,0.1);
+  transition: transform 0.2s;
+}
+
+.note-controls .priority-option:hover {
+  transform: scale(1.3);
+}
+
+/* Color Picker Menu */
+.color-menu {
+  position: fixed;
+  bottom: 110px;
+  right: 40px;
+  background: white;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 101;
+  opacity: 0;
+  transform: translateY(20px) scale(0.8);
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.color-menu.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.color-option {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid rgba(0,0,0,0.1);
+  transition: transform 0.2s;
+}
+
+.color-option:hover {
+  transform: scale(1.2);
+}
+
+.priority-selector {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid #eee;
+}
+
+.priority-option {
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  cursor: pointer;
+  color: white;
+  font-family: 'Outfit', sans-serif;
+  font-weight: bold;
+}
+.p-red { background: #ff5252; }
+.p-yellow { background: #ffd740; color: #333; }
+.p-green { background: #69f0ae; color: #333; }
+.p-none { background: #eee; color: #333; }
+
+/* Chalk dust effect */
+.chalk-tray {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 150px;
+  height: 10px;
+  background: #eee;
+  border-radius: 5px 5px 0 0;
+  opacity: 0.8;
+}
+
+/* Colors */
+.color-yellow { background: var(--postit-yellow); }
+.color-blue { background: var(--postit-blue); }
+.color-pink { background: var(--postit-pink); }
+.color-green { background: var(--postit-green); }
+.color-purple { background: var(--postit-purple); }
+
+/* Animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.post-it.new {
+  animation: fadeIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pizarra Mágica - Post-its</title>
+    <meta name="description" content="Una pizarra interactiva para crear y organizar tus ideas con post-its digitales." />
+  </head>
+  <body>
+    <div id="app">
+      <div class="board-container" id="board">
+        <div class="chalk-tray"></div>
+        <!-- Post-its will be injected here -->
+      </div>
+      
+      <div class="overlay" id="overlay"></div>
+      
+      <div class="color-menu" id="color-menu">
+        <div style="display: flex; gap: 10px;">
+          <div class="color-option color-yellow" data-color="color-yellow" title="Amarillo"></div>
+          <div class="color-option color-blue" data-color="color-blue" title="Azul"></div>
+          <div class="color-option color-pink" data-color="color-pink" title="Rosa"></div>
+          <div class="color-option color-green" data-color="color-green" title="Verde"></div>
+          <div class="color-option color-purple" data-color="color-purple" title="Morado"></div>
+        </div>
+        <div class="priority-selector">
+          <div class="priority-option p-red" data-priority="priority-red">ROJO</div>
+          <div class="priority-option p-yellow" data-priority="priority-yellow">AMARILLO</div>
+          <div class="priority-option p-green" data-priority="priority-green">VERDE</div>
+          <div class="priority-option p-none" data-priority="">Ninguno</div>
+        </div>
+      </div>
+      
+      <button class="add-btn" id="add-btn" title="Añadir nota">+</button>
+    </div>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
