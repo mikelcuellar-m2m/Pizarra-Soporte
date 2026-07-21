@@ -7,6 +7,13 @@ import { join } from 'node:path';
 // Los usuarios los crea el administrador (no hay registro público).
 // Las contraseñas se guardan SIEMPRE con hash bcrypt, nunca en texto plano.
 
+export const MIN_PASSWORD_LENGTH = 8;
+
+// Hash "señuelo": se compara contra él cuando el usuario NO existe, para que
+// el tiempo de respuesta sea similar al de un usuario real y no se pueda
+// enumerar cuentas midiendo la latencia.
+const DUMMY_HASH = bcrypt.hashSync('timing-attack-mitigation-dummy', 10);
+
 export function createUserStore(dataDir) {
   const USERS_FILE = join(dataDir, 'users.json');
   let users = [];
@@ -41,10 +48,13 @@ export function createUserStore(dataDir) {
     },
     async create(email, password, name) {
       const e = norm(email);
-      if (!e || !password) throw new Error('Correo y contraseña son obligatorios');
+      if (!e || typeof password !== 'string') throw new Error('Correo y contraseña son obligatorios');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new Error('Correo no válido');
+      if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`);
       if (users.some(u => u.email === e)) throw new Error('Ese usuario ya existe');
       const passHash = await bcrypt.hash(password, 10);
-      const user = { email: e, name: (name || e).trim(), passHash, createdAt: new Date().toISOString() };
+      const displayName = (typeof name === 'string' && name.trim()) ? name.trim().slice(0, 80) : e;
+      const user = { email: e, name: displayName, passHash, createdAt: new Date().toISOString() };
       users.push(user);
       save();
       return { email: user.email, name: user.name, createdAt: user.createdAt };
@@ -52,6 +62,9 @@ export function createUserStore(dataDir) {
     async setPassword(email, password) {
       const user = this.find(email);
       if (!user) throw new Error('Usuario no encontrado');
+      if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+        throw new Error(`La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`);
+      }
       user.passHash = await bcrypt.hash(password, 10);
       save();
     },
@@ -63,11 +76,57 @@ export function createUserStore(dataDir) {
       return users.length !== before;
     },
     async verify(email, password) {
+      // Validar tipos: bcrypt.compare lanza si recibe algo que no es string
+      // (esto tumbaba el proceso => DoS). Se comprueba siempre.
+      if (typeof email !== 'string' || typeof password !== 'string') {
+        await bcrypt.compare('x', DUMMY_HASH); // mantener tiempo constante
+        return null;
+      }
       const user = this.find(email);
-      if (!user) return null;
-      const ok = await bcrypt.compare(password, user.passHash);
-      return ok ? { email: user.email, name: user.name } : null;
+      // Si el usuario no existe, se compara igualmente contra un hash señuelo
+      // para que el tiempo de respuesta no delate qué correos son válidos.
+      const hash = user ? user.passHash : DUMMY_HASH;
+      const ok = await bcrypt.compare(password, hash);
+      return (user && ok) ? { email: user.email, name: user.name } : null;
     },
+  };
+}
+
+// ===== Limitador de intentos (anti fuerza bruta) =====
+// En memoria: cuenta fallos por clave (IP y/o cuenta) y bloquea temporalmente.
+export function createRateLimiter({ maxAttempts = 8, windowMs = 15 * 60 * 1000, lockMs = 15 * 60 * 1000 } = {}) {
+  const hits = new Map(); // key -> { count, first, lockedUntil }
+
+  // Limpieza periódica de entradas caducadas (no retiene el proceso vivo).
+  const sweep = setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of hits) {
+      if ((v.lockedUntil || 0) < now && (v.first + windowMs) < now) hits.delete(k);
+    }
+  }, windowMs);
+  if (sweep.unref) sweep.unref();
+
+  return {
+    // Devuelve { blocked, retryAfter(segundos) } sin registrar intento.
+    check(key) {
+      const now = Date.now();
+      const v = hits.get(key);
+      if (v && v.lockedUntil && v.lockedUntil > now) {
+        return { blocked: true, retryAfter: Math.ceil((v.lockedUntil - now) / 1000) };
+      }
+      return { blocked: false, retryAfter: 0 };
+    },
+    // Registra un fallo; bloquea al superar el máximo dentro de la ventana.
+    fail(key) {
+      const now = Date.now();
+      let v = hits.get(key);
+      if (!v || (v.first + windowMs) < now) v = { count: 0, first: now, lockedUntil: 0 };
+      v.count += 1;
+      if (v.count >= maxAttempts) v.lockedUntil = now + lockMs;
+      hits.set(key, v);
+    },
+    // Éxito: limpia el contador de esa clave.
+    reset(key) { hits.delete(key); },
   };
 }
 

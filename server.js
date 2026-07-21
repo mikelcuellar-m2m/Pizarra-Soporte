@@ -4,7 +4,15 @@ import { Server } from 'socket.io';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { createUserStore, createSessions, getSessionSecret, parseCookies } from './auth.js';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { createUserStore, createSessions, getSessionSecret, parseCookies, createRateLimiter } from './auth.js';
+
+// Comparación de cadenas en tiempo constante (evita ataques de temporización).
+function safeEqual(a, b) {
+  const ha = createHash('sha256').update(String(a)).digest();
+  const hb = createHash('sha256').update(String(b)).digest();
+  return timingSafeEqual(ha, hb);
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -13,7 +21,10 @@ const DATA_DIR = process.env.DATA_DIR || join(__dirname, 'data');
 const DATA_FILE = join(DATA_DIR, 'notes.json');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const ALLOWED_DOMAIN = (process.env.ALLOWED_DOMAIN || '').trim().toLowerCase(); // opcional, p.ej. m2mdataglobal.com
-const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
+// Secure por defecto en producción (Dokploy sirve por HTTPS); se puede forzar con COOKIE_SECURE.
+const COOKIE_SECURE = process.env.COOKIE_SECURE
+  ? process.env.COOKIE_SECURE === 'true'
+  : process.env.NODE_ENV === 'production';
 const COOKIE_NAME = 'pizarra_session';
 const ADMIN_COOKIE = 'pizarra_admin';
 
@@ -21,6 +32,15 @@ mkdirSync(DATA_DIR, { recursive: true });
 
 const users = createUserStore(DATA_DIR);
 const sessions = createSessions(getSessionSecret(DATA_DIR));
+
+// Limitadores anti fuerza bruta (en memoria)
+const loginLimiter = createRateLimiter({ maxAttempts: 8, windowMs: 15 * 60 * 1000, lockMs: 15 * 60 * 1000 });
+const adminLimiter = createRateLimiter({ maxAttempts: 5, windowMs: 15 * 60 * 1000, lockMs: 30 * 60 * 1000 });
+
+// Red de seguridad: registrar promesas rechazadas sin control en vez de morir.
+process.on('unhandledRejection', (reason) => {
+  console.error('[pizarra] unhandledRejection:', reason);
+});
 
 if (!ADMIN_PASSWORD) {
   console.warn('[pizarra] ADMIN_PASSWORD no está definida: el panel /admin quedará deshabilitado hasta configurarla.');
@@ -60,7 +80,10 @@ loadNotes();
 
 // ===== App HTTP =====
 const app = express();
-app.use(express.json());
+// Detrás del proxy de Dokploy/Traefik: confiar en 1 salto para obtener la IP real.
+app.set('trust proxy', 1);
+// Límite de tamaño del body para evitar payloads gigantes.
+app.use(express.json({ limit: '16kb' }));
 const httpServer = createServer(app);
 const io = new Server(httpServer);
 
@@ -98,13 +121,41 @@ function domainOk(email) {
   return String(email).toLowerCase().endsWith('@' + ALLOWED_DOMAIN);
 }
 
+function tooMany(res, retryAfter) {
+  res.set('Retry-After', String(retryAfter));
+  return res.status(429).json({ error: `Demasiados intentos. Inténtalo de nuevo en ${Math.ceil(retryAfter / 60)} min.` });
+}
+
 // ===== Rutas de autenticación =====
 app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  const user = await users.verify(email, password);
-  if (!user) return res.status(401).json({ error: 'Credenciales incorrectas' });
-  setCookie(res, COOKIE_NAME, sessions.sign({ email: user.email, name: user.name }), sessions.maxAgeMs);
-  res.json({ email: user.email, name: user.name });
+  try {
+    const { email, password } = req.body || {};
+    const ipKey = `login:ip:${req.ip}`;
+    const userKey = typeof email === 'string' ? `login:user:${email.toLowerCase()}` : null;
+
+    // Bloqueo por IP o por cuenta
+    const cIp = loginLimiter.check(ipKey);
+    if (cIp.blocked) return tooMany(res, cIp.retryAfter);
+    if (userKey) {
+      const cUser = loginLimiter.check(userKey);
+      if (cUser.blocked) return tooMany(res, cUser.retryAfter);
+    }
+
+    const user = await users.verify(email, password);
+    if (!user) {
+      loginLimiter.fail(ipKey);
+      if (userKey) loginLimiter.fail(userKey);
+      return res.status(401).json({ error: 'Credenciales incorrectas' });
+    }
+
+    loginLimiter.reset(ipKey);
+    if (userKey) loginLimiter.reset(userKey);
+    setCookie(res, COOKIE_NAME, sessions.sign({ email: user.email, name: user.name }), sessions.maxAgeMs);
+    res.json({ email: user.email, name: user.name });
+  } catch (err) {
+    console.error('[pizarra] error en /api/login:', err);
+    res.status(500).json({ error: 'Error interno' });
+  }
 });
 
 app.post('/api/logout', (req, res) => {
@@ -127,8 +178,17 @@ function requireAdmin(req, res, next) {
 
 app.post('/api/admin/login', (req, res) => {
   if (!ADMIN_PASSWORD) return res.status(503).json({ error: 'Panel deshabilitado: define ADMIN_PASSWORD' });
+  const ipKey = `admin:ip:${req.ip}`;
+  const c = adminLimiter.check(ipKey);
+  if (c.blocked) return tooMany(res, c.retryAfter);
+
   const { password } = req.body || {};
-  if (!password || password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Contraseña de administrador incorrecta' });
+  // Comparación en tiempo constante para no filtrar la clave por temporización.
+  if (typeof password !== 'string' || !safeEqual(password, ADMIN_PASSWORD)) {
+    adminLimiter.fail(ipKey);
+    return res.status(401).json({ error: 'Contraseña de administrador incorrecta' });
+  }
+  adminLimiter.reset(ipKey);
   setCookie(res, ADMIN_COOKIE, sessions.sign({ admin: true }), sessions.maxAgeMs);
   res.json({ ok: true });
 });
