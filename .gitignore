@@ -13,6 +13,10 @@ dist-ssr
 data
 *.local
 
+# Datos sensibles del script de alta de usuarios (repo público)
+scripts/emails.txt
+scripts/credenciales.csv
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
