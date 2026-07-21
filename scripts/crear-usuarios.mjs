@@ -31,10 +31,15 @@ if (!existsSync(emailsFile)) {
   process.exit(1);
 }
 
-const emails = readFileSync(emailsFile, 'utf-8')
-  .split(/\r?\n/).map(s => s.trim()).filter(Boolean).filter(e => !e.startsWith('#'));
+// Cada línea puede ser "correo" (se genera contraseña) o "correo,contraseña".
+const entries = readFileSync(emailsFile, 'utf-8')
+  .split(/\r?\n/).map(s => s.trim()).filter(Boolean).filter(e => !e.startsWith('#'))
+  .map(line => {
+    const [email, password] = line.split(',').map(s => s.trim());
+    return { email, password: password || null };
+  });
 
-if (!emails.length) { console.error('emails.txt está vacío.'); process.exit(1); }
+if (!entries.length) { console.error('emails.txt está vacío.'); process.exit(1); }
 
 // Generador de contraseñas fuertes sin caracteres ambiguos (0/O, 1/l/I).
 function genPassword(len = 14) {
@@ -77,8 +82,8 @@ async function main() {
   console.log('Admin autenticado. Creando usuarios...\n');
 
   const rows = [];
-  for (const email of emails) {
-    const password = genPassword();
+  for (const { email, password: given } of entries) {
+    const password = given || genPassword();
     const r = await createUser(cookie, email, password);
     if (r.ok) {
       rows.push({ email, password });
