@@ -115,6 +115,7 @@ body {
   outline: none;
   cursor: pointer;
   pointer-events: none; /* Make click go to parent */
+  overflow: hidden; /* sin scrollbar en la nota pequeña */
 }
 
 /* Maximized state */
@@ -137,6 +138,37 @@ body {
 .post-it.maximized .content {
   pointer-events: auto;
   cursor: text;
+  overflow: auto; /* al ampliar, se puede desplazar todo el texto */
+}
+
+/* Etiqueta "Pincha para ampliar" cuando el texto no cabe */
+.expand-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  padding: 3px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 4;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+.expand-hint:hover { background: rgba(0, 0, 0, 0.75); }
+
+/* Solo visible si hay desbordamiento y la nota no está ampliada */
+.post-it.has-overflow:not(.maximized) .expand-hint { display: block; }
+/* Difuminado inferior para insinuar que hay más texto */
+.post-it.has-overflow:not(.maximized) .content {
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
 }
 
 .post-it.maximized::before {

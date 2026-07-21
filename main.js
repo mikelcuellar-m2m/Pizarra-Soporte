@@ -93,6 +93,17 @@ function getEl(id) {
 function applyClassName(el, note) {
   const maximized = el.classList.contains('maximized') ? ' maximized' : '';
   el.className = `post-it ${note.color} ${note.priority || ''}${maximized}`;
+  updateOverflow(el); // reconstruir className pierde has-overflow; recalcular
+}
+
+// Marca la nota si su texto no cabe en el tamaño pequeño (para mostrar
+// la etiqueta "Pincha para ampliar"). No aplica en estado maximizado.
+function updateOverflow(el) {
+  if (!el) return;
+  const ta = el.querySelector('textarea');
+  if (!ta) return;
+  const overflowing = !el.classList.contains('maximized') && ta.scrollHeight > ta.clientHeight + 2;
+  el.classList.toggle('has-overflow', overflowing);
 }
 
 function wireSocket() {
@@ -122,6 +133,7 @@ function wireSocket() {
     if (patch.text != null) {
       const textarea = el.querySelector('textarea');
       if (textarea && document.activeElement !== textarea) textarea.value = patch.text;
+      updateOverflow(el);
     }
   });
 
@@ -172,6 +184,17 @@ function createNoteElement(note) {
   author.className = 'note-author';
   author.textContent = note.author ? `— ${note.author}` : '';
 
+  // Etiqueta que aparece cuando el texto no cabe (ver updateOverflow)
+  const expandHint = document.createElement('div');
+  expandHint.className = 'expand-hint';
+  expandHint.textContent = 'Pincha para ampliar';
+  expandHint.title = 'Ver todo el texto';
+  expandHint.addEventListener('mousedown', (e) => e.stopPropagation());
+  expandHint.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!el.classList.contains('maximized')) maximizeNote(el, note);
+  });
+
   const controls = document.createElement('div');
   controls.className = 'note-controls';
 
@@ -194,6 +217,7 @@ function createNoteElement(note) {
   el.appendChild(content);
   el.appendChild(deleteBtn);
   el.appendChild(author);
+  el.appendChild(expandHint);
   el.appendChild(controls);
 
   let isDragging = false;
@@ -208,6 +232,7 @@ function createNoteElement(note) {
       return;
     }
     if (e.target.closest('.note-controls')) return;
+    if (e.target.closest('.expand-hint')) return;
     if (el.classList.contains('maximized')) return;
 
     isDragging = true;
@@ -261,6 +286,9 @@ function createNoteElement(note) {
     if (el.classList.contains('maximized')) return;
     maximizeNote(el, note);
   });
+
+  // Medir el desbordamiento una vez que el elemento está en el DOM.
+  requestAnimationFrame(() => updateOverflow(el));
 
   return el;
 }
@@ -331,6 +359,7 @@ function closeMaximized() {
   if (activeNoteEl) {
     activeNoteEl.classList.remove('maximized');
     overlay.classList.remove('visible');
+    updateOverflow(activeNoteEl); // el texto pudo crecer mientras estaba ampliada
     activeNote = null;
     activeNoteEl = null;
   }
