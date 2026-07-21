@@ -375,3 +375,109 @@ body {
 .post-it.new {
   animation: fadeIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
+
+/* Autor de la nota */
+.note-author {
+  position: absolute;
+  bottom: 6px;
+  right: 12px;
+  font-family: 'Indie Flower', cursive;
+  font-size: 0.85rem;
+  color: rgba(0,0,0,0.55);
+  pointer-events: none;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  z-index: 3;
+}
+.post-it.maximized .note-author {
+  font-size: 1.4rem;
+  bottom: 20px;
+  right: 30px;
+}
+
+/* Login */
+.login-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(37,99,235,0.25), transparent 60%),
+    #1a1a1e;
+}
+.login-screen[hidden] { display: none; }
+
+.login-card {
+  width: 320px;
+  max-width: 90vw;
+  background: #fff;
+  padding: 32px 28px;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+}
+.login-logo { margin: 0 auto 4px; }
+.login-card h1 { font-size: 1.5rem; color: #1a1a1e; }
+.login-sub { color: #666; font-size: 0.9rem; margin-bottom: 8px; }
+.login-card input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-family: 'Outfit', sans-serif;
+  outline: none;
+}
+.login-card input:focus { border-color: #2563eb; }
+.login-card button {
+  padding: 12px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.login-card button:hover { background: #1d4ed8; }
+.login-card button:disabled { opacity: 0.6; cursor: default; }
+.login-error { color: #d32f2f; font-size: 0.85rem; min-height: 1em; }
+
+/* Barra de usuario */
+#app[hidden] { display: none; }
+.user-bar {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  padding: 6px 8px 6px 16px;
+  border-radius: 30px;
+  font-size: 0.9rem;
+  backdrop-filter: blur(4px);
+}
+.user-name { font-weight: 700; }
+.logout-btn {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border: none;
+  padding: 5px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.85rem;
+}
+.logout-btn:hover { background: rgba(255,255,255,0.3); }

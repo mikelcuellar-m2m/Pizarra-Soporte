@@ -8,7 +8,24 @@
     <meta name="description" content="Una pizarra interactiva para crear y organizar tus ideas con post-its digitales." />
   </head>
   <body>
-    <div id="app">
+    <!-- Pantalla de login (se oculta cuando hay sesión válida) -->
+    <div class="login-screen" id="login-screen" hidden>
+      <form class="login-card" id="login-form">
+        <img src="/support.svg" alt="" class="login-logo" width="56" height="56" />
+        <h1>Pizarra Soporte</h1>
+        <p class="login-sub">Inicia sesión para acceder</p>
+        <input type="email" id="login-email" placeholder="Correo" autocomplete="username" required />
+        <input type="password" id="login-password" placeholder="Contraseña" autocomplete="current-password" required />
+        <button type="submit" id="login-btn">Entrar</button>
+        <div class="login-error" id="login-error"></div>
+      </form>
+    </div>
+
+    <div id="app" hidden>
+      <div class="user-bar" id="user-bar">
+        <span class="user-name" id="user-name"></span>
+        <button class="logout-btn" id="logout-btn" title="Cerrar sesión">Salir</button>
+      </div>
       <div class="board-container" id="board">
         <div class="chalk-tray"></div>
         <!-- Post-its will be injected here -->

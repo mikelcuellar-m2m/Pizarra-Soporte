@@ -6,15 +6,82 @@ const addBtn = document.getElementById('add-btn');
 const overlay = document.getElementById('overlay');
 const colorMenu = document.getElementById('color-menu');
 
-// --- Conexión colaborativa (abierta, sin usuarios) ---
-// Todas las notas viven en el servidor y se comparten entre todos en tiempo real.
-const socket = io();
+// Login / app gate
+const loginScreen = document.getElementById('login-screen');
+const loginForm = document.getElementById('login-form');
+const loginEmail = document.getElementById('login-email');
+const loginPassword = document.getElementById('login-password');
+const loginError = document.getElementById('login-error');
+const appEl = document.getElementById('app');
+const userNameEl = document.getElementById('user-name');
+const logoutBtn = document.getElementById('logout-btn');
 
+let socket = null;
 let notes = [];
 let activeNote = null;
 let activeNoteEl = null;
+let started = false;
 
-// ===== Helpers de sincronización =====
+// ===== Arranque: comprobar sesión =====
+async function boot() {
+  try {
+    const res = await fetch('/api/me');
+    if (res.ok) {
+      startApp(await res.json());
+      return;
+    }
+  } catch { /* sin conexión: mostrar login igualmente */ }
+  showLogin();
+}
+
+function showLogin() {
+  appEl.hidden = true;
+  loginScreen.hidden = false;
+  loginEmail.focus();
+}
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  loginError.textContent = '';
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: loginEmail.value.trim(), password: loginPassword.value }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      loginError.textContent = data.error || 'No se pudo iniciar sesión';
+      return;
+    }
+    startApp(await res.json());
+  } catch {
+    loginError.textContent = 'Error de conexión';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+logoutBtn.addEventListener('click', async () => {
+  try { await fetch('/api/logout', { method: 'POST' }); } catch {}
+  window.location.reload();
+});
+
+function startApp(user) {
+  loginScreen.hidden = true;
+  appEl.hidden = false;
+  userNameEl.textContent = user.name || user.email;
+
+  if (started) return;
+  started = true;
+
+  socket = io();
+  wireSocket();
+}
+
+// ===== Sincronización =====
 function emitAdd(note) { socket.emit('note:add', note); }
 function emitUpdate(patch) { socket.emit('note:update', patch); }
 function emitDelete(id) { socket.emit('note:delete', id); }
@@ -28,54 +95,47 @@ function applyClassName(el, note) {
   el.className = `post-it ${note.color} ${note.priority || ''}${maximized}`;
 }
 
-// ===== Eventos entrantes del servidor (cambios de OTRAS personas) =====
-socket.on('notes:init', (serverNotes) => {
-  notes = Array.isArray(serverNotes) ? serverNotes : [];
-  renderNotes();
-});
+function wireSocket() {
+  socket.on('notes:init', (serverNotes) => {
+    notes = Array.isArray(serverNotes) ? serverNotes : [];
+    renderNotes();
+  });
 
-socket.on('note:added', (note) => {
-  if (notes.some(n => n.id === note.id)) return;
-  notes.push(note);
-  if (!getEl(note.id)) {
-    board.appendChild(createNoteElement(note));
-  }
-});
+  socket.on('note:added', (note) => {
+    if (notes.some(n => n.id === note.id)) return;
+    notes.push(note);
+    if (!getEl(note.id)) board.appendChild(createNoteElement(note));
+  });
 
-socket.on('note:updated', (patch) => {
-  const note = notes.find(n => n.id === patch.id);
-  if (!note) return;
-  Object.assign(note, patch);
+  socket.on('note:updated', (patch) => {
+    const note = notes.find(n => n.id === patch.id);
+    if (!note) return;
+    Object.assign(note, patch);
 
-  const el = getEl(patch.id);
-  if (!el) return;
+    const el = getEl(patch.id);
+    if (!el) return;
 
-  // Posición
-  if (patch.x != null) el.style.left = `${patch.x}px`;
-  if (patch.y != null) el.style.top = `${patch.y}px`;
+    if (patch.x != null) el.style.left = `${patch.x}px`;
+    if (patch.y != null) el.style.top = `${patch.y}px`;
+    if (patch.color != null || patch.priority != null) applyClassName(el, note);
 
-  // Color / prioridad
-  if (patch.color != null || patch.priority != null) applyClassName(el, note);
-
-  // Texto: no pisar lo que este usuario esté escribiendo ahora mismo
-  if (patch.text != null) {
-    const textarea = el.querySelector('textarea');
-    if (textarea && document.activeElement !== textarea) {
-      textarea.value = patch.text;
+    if (patch.text != null) {
+      const textarea = el.querySelector('textarea');
+      if (textarea && document.activeElement !== textarea) textarea.value = patch.text;
     }
-  }
-});
+  });
 
-socket.on('note:deleted', (id) => {
-  notes = notes.filter(n => n.id !== id);
-  const el = getEl(id);
-  if (el) {
-    el.style.transform = 'scale(0)';
-    el.style.opacity = '0';
-    setTimeout(() => el.remove(), 300);
-    if (el === activeNoteEl) closeMaximized();
-  }
-});
+  socket.on('note:deleted', (id) => {
+    notes = notes.filter(n => n.id !== id);
+    const el = getEl(id);
+    if (el) {
+      el.style.transform = 'scale(0)';
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 300);
+      if (el === activeNoteEl) closeMaximized();
+    }
+  });
+}
 
 // ===== Acciones locales =====
 function deleteNote(id, el) {
@@ -97,19 +157,21 @@ function createNoteElement(note) {
   el.style.transform = `rotate(${note.rotate}deg)`;
   el.dataset.id = note.id;
 
-  // TextArea for content
   const content = document.createElement('textarea');
   content.className = 'content';
   content.value = note.text;
   content.placeholder = 'Escribe algo...';
 
-  // DELETE BUTTON
   const deleteBtn = document.createElement('div');
   deleteBtn.className = 'delete-btn';
   deleteBtn.textContent = '×';
   deleteBtn.title = 'Eliminar nota';
 
-  // Internal Priority Controls
+  // Autor de la nota
+  const author = document.createElement('div');
+  author.className = 'note-author';
+  author.textContent = note.author ? `— ${note.author}` : '';
+
   const controls = document.createElement('div');
   controls.className = 'note-controls';
 
@@ -131,33 +193,23 @@ function createNoteElement(note) {
 
   el.appendChild(content);
   el.appendChild(deleteBtn);
+  el.appendChild(author);
   el.appendChild(controls);
-
-  // === EVENT HANDLING ===
-  // We use a flag-based approach to cleanly separate drag vs delete vs dblclick
 
   let isDragging = false;
   let hasMoved = false;
   let offsetX, offsetY;
   let deleteClicked = false;
 
-  // 1) Capture phase listener on the post-it: detect if the target is .delete-btn FIRST
   el.addEventListener('mousedown', (e) => {
-    // Check if user clicked the delete button
     if (e.target.closest('.delete-btn')) {
       deleteClicked = true;
       e.preventDefault();
-      return; // Do nothing else — let mouseup handle the delete
-    }
-
-    // Check if user clicked controls
-    if (e.target.closest('.note-controls')) {
       return;
     }
-
+    if (e.target.closest('.note-controls')) return;
     if (el.classList.contains('maximized')) return;
 
-    // Start dragging
     isDragging = true;
     hasMoved = false;
     el.style.transition = 'none';
@@ -186,22 +238,16 @@ function createNoteElement(note) {
   };
 
   const onMouseUp = (e) => {
-    // Handle delete button release
     if (deleteClicked) {
       deleteClicked = false;
-      if (e.target.closest('.delete-btn')) {
-        deleteNote(note.id, el);
-      }
+      if (e.target.closest('.delete-btn')) deleteNote(note.id, el);
       return;
     }
-
     if (isDragging) {
       isDragging = false;
       el.style.transition = '';
       el.style.zIndex = '';
-      if (hasMoved) {
-        emitUpdate({ id: note.id, x: note.x, y: note.y });
-      }
+      if (hasMoved) emitUpdate({ id: note.id, x: note.x, y: note.y });
       hasMoved = false;
     }
   };
@@ -220,17 +266,11 @@ function createNoteElement(note) {
 }
 
 function renderNotes() {
-  const existingNotes = board.querySelectorAll('.post-it');
-  existingNotes.forEach(n => n.remove());
-
-  notes.forEach(note => {
-    const el = createNoteElement(note);
-    board.appendChild(el);
-  });
+  board.querySelectorAll('.post-it').forEach(n => n.remove());
+  notes.forEach(note => board.appendChild(createNoteElement(note)));
 }
 
 // === COLOR & PRIORITY SELECTION ===
-
 let selectedColor = 'color-yellow';
 let selectedPriority = '';
 
@@ -244,7 +284,6 @@ document.querySelectorAll('.color-option').forEach(opt => {
     selectedColor = e.target.dataset.color;
     document.querySelectorAll('.color-option').forEach(o => o.style.border = '2px solid rgba(0,0,0,0.1)');
     e.target.style.border = '3px solid #333';
-
     addNote();
     colorMenu.classList.remove('visible');
   });
@@ -317,4 +356,4 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// El primer render llega vía 'notes:init' del servidor.
+boot();

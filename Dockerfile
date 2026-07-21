@@ -24,8 +24,14 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 # Servidor y build generado en la etapa anterior
-COPY server.js ./
+COPY server.js auth.js ./
 COPY --from=build /app/dist ./dist
+
+# Variables de entorno relevantes (configurar en Dokploy):
+#   ADMIN_PASSWORD   contraseña del panel /admin.html para gestionar usuarios (obligatoria para crear usuarios)
+#   ALLOWED_DOMAIN   opcional, restringe los correos, p.ej. m2mdataglobal.com
+#   SESSION_SECRET   opcional, si no se define se genera y persiste en /app/data
+#   COOKIE_SECURE    "true" si se sirve por HTTPS (recomendado en producción)
 
 # Carpeta persistente para las notas (montar un volumen aquí en Dokploy)
 RUN mkdir -p /app/data

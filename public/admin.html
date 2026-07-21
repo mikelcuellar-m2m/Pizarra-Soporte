@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/support.svg" />
+  <title>Administración — Pizarra Soporte</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #1a1a1e; color: #eee; min-height: 100vh; display: flex; justify-content: center; padding: 40px 16px; }
+    .wrap { width: 100%; max-width: 620px; }
+    h1 { font-size: 1.4rem; margin-bottom: 4px; }
+    .sub { color: #999; margin-bottom: 24px; font-size: 0.9rem; }
+    .card { background: #26262c; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    label { display: block; font-size: 0.8rem; color: #aaa; margin: 10px 0 4px; }
+    input { width: 100%; padding: 10px 12px; border: 1px solid #3a3a42; border-radius: 8px; background: #1a1a1e; color: #eee; font-size: 0.95rem; }
+    input:focus { outline: none; border-color: #2563eb; }
+    button { padding: 10px 16px; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; font-size: 0.9rem; margin-top: 14px; }
+    button:hover { background: #1d4ed8; }
+    button.secondary { background: #3a3a42; }
+    button.danger { background: #b91c1c; padding: 5px 10px; margin: 0; font-size: 0.8rem; }
+    .msg { min-height: 1.2em; font-size: 0.85rem; margin-top: 10px; }
+    .msg.err { color: #f87171; }
+    .msg.ok { color: #4ade80; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #3a3a42; font-size: 0.88rem; }
+    th { color: #999; font-weight: 600; }
+    .hidden { display: none; }
+    .top { display: flex; justify-content: space-between; align-items: center; }
+    a { color: #60a5fa; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>Administración</h1>
+        <p class="sub">Pizarra Soporte — gestión de usuarios</p>
+      </div>
+      <a href="/">← Volver a la pizarra</a>
+    </div>
+
+    <!-- Login de administrador -->
+    <div class="card" id="admin-login">
+      <label>Contraseña de administrador</label>
+      <input type="password" id="admin-pass" placeholder="ADMIN_PASSWORD" />
+      <button id="admin-login-btn">Entrar</button>
+      <div class="msg err" id="admin-login-msg"></div>
+    </div>
+
+    <!-- Gestión -->
+    <div id="panel" class="hidden">
+      <div class="card">
+        <h1 style="font-size:1.1rem;">Crear usuario</h1>
+        <p class="sub" id="domain-hint" style="margin:4px 0 0;"></p>
+        <label>Nombre</label>
+        <input type="text" id="new-name" placeholder="Nombre a mostrar" />
+        <label>Correo</label>
+        <input type="email" id="new-email" placeholder="persona@empresa.com" />
+        <label>Contraseña</label>
+        <input type="text" id="new-pass" placeholder="Contraseña inicial" />
+        <button id="create-btn">Crear usuario</button>
+        <div class="msg" id="create-msg"></div>
+      </div>
+
+      <div class="card">
+        <div class="top">
+          <h1 style="font-size:1.1rem;">Usuarios</h1>
+          <button class="secondary" id="logout-admin" style="margin:0;padding:6px 12px;">Cerrar sesión admin</button>
+        </div>
+        <table>
+          <thead><tr><th>Nombre</th><th>Correo</th><th></th></tr></thead>
+          <tbody id="users-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const loginCard = $('admin-login');
+    const panel = $('panel');
+
+    async function api(path, opts) {
+      const res = await fetch(path, opts);
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok, status: res.status, data };
+    }
+
+    async function checkSession() {
+      const { ok, data } = await api('/api/admin/users');
+      if (ok) { showPanel(data); } else { showLogin(); }
+    }
+
+    function showLogin() { loginCard.classList.remove('hidden'); panel.classList.add('hidden'); $('admin-pass').focus(); }
+    function showPanel(data) {
+      loginCard.classList.add('hidden'); panel.classList.remove('hidden');
+      $('domain-hint').textContent = data.allowedDomain ? `Solo se admiten correos @${data.allowedDomain}` : '';
+      renderUsers(data.users || []);
+    }
+
+    function renderUsers(users) {
+      const body = $('users-body');
+      body.innerHTML = '';
+      if (!users.length) { body.innerHTML = '<tr><td colspan="3" style="color:#888;">Sin usuarios todavía</td></tr>'; return; }
+      users.forEach(u => {
+        const tr = document.createElement('tr');
+        const name = document.createElement('td'); name.textContent = u.name;
+        const email = document.createElement('td'); email.textContent = u.email;
+        const actions = document.createElement('td'); actions.style.textAlign = 'right';
+        const del = document.createElement('button'); del.className = 'danger'; del.textContent = 'Eliminar';
+        del.onclick = () => deleteUser(u.email);
+        actions.appendChild(del);
+        tr.append(name, email, actions);
+        body.appendChild(tr);
+      });
+    }
+
+    $('admin-login-btn').onclick = async () => {
+      $('admin-login-msg').textContent = '';
+      const { ok, data } = await api('/api/admin/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: $('admin-pass').value }),
+      });
+      if (ok) { $('admin-pass').value=''; checkSession(); }
+      else $('admin-login-msg').textContent = data.error || 'Error';
+    };
+    $('admin-pass').addEventListener('keydown', e => { if (e.key === 'Enter') $('admin-login-btn').click(); });
+
+    $('create-btn').onclick = async () => {
+      const msg = $('create-msg'); msg.className = 'msg'; msg.textContent = '';
+      const { ok, data } = await api('/api/admin/users', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: $('new-name').value, email: $('new-email').value, password: $('new-pass').value }),
+      });
+      if (ok) {
+        msg.className = 'msg ok'; msg.textContent = `Usuario ${data.email} creado`;
+        $('new-name').value = ''; $('new-email').value = ''; $('new-pass').value = '';
+        checkSession();
+      } else { msg.className = 'msg err'; msg.textContent = data.error || 'Error'; }
+    };
+
+    async function deleteUser(email) {
+      if (!confirm(`¿Eliminar a ${email}?`)) return;
+      await api('/api/admin/users?email=' + encodeURIComponent(email), { method: 'DELETE' });
+      checkSession();
+    }
+
+    $('logout-admin').onclick = async () => { await api('/api/admin/logout', { method: 'POST' }); showLogin(); };
+
+    checkSession();
+  </script>
+</body>
+</html>
